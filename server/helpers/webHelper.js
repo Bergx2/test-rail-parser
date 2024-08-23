@@ -15,10 +15,8 @@ const addWebCaseHandler = async (data) => {
   });
 };
 
-const parseWeb = async (params) => {
+const parseHandler = async (test) => {
   try {
-    const { test } = params;
-
     if (!isDeletedSuites) {
       console.log('START DELETE SUITES');
       await deleteAllSuites();
@@ -51,7 +49,46 @@ const parseWeb = async (params) => {
   }
 }
 
+const parseWeb = async (params) => {
+  let indents = 0;
+  const { runner, runnerConstants } = params;
+  const { stats } = runner;
+  const {
+    EVENT_RUN_BEGIN,
+    EVENT_RUN_END,
+    EVENT_TEST_FAIL,
+    EVENT_TEST_PASS,
+    EVENT_SUITE_BEGIN,
+    EVENT_SUITE_END
+  } = runnerConstants;
+  runner
+    .once(EVENT_RUN_BEGIN, async () => {
+      console.log('START RUNNER');
+    })
+    .on(EVENT_SUITE_BEGIN, async (test) => {
+      if (process.env.IS_TESTRAIL && !(test.suites.length && !test.title.length)) {
+        console.log('START TESTS');
+        await parseHandler(test);
+      }
+
+      indents++;
+    })
+    .on(EVENT_SUITE_END, () => {
+      indents--;
+    })
+    .on(EVENT_TEST_PASS, test => {
+      console.log(`${Array(indents).join('  ')}pass parse here: ${test.fullTitle()}`);
+    })
+    .on(EVENT_TEST_FAIL, (test, err) => {
+      console.log(
+        `${Array(indents).join('  ')}fail parse here: ${test.fullTitle()} - error: ${err.message}`
+      );
+    })
+    .once(EVENT_RUN_END, () => {
+      console.log(`end: ${stats.passes}/${stats.passes + stats.failures} ok`);
+    });
+}
+
 module.exports = {
-  addWebCaseHandler,
   parseWeb
 };

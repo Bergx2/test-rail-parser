@@ -1,7 +1,5 @@
 const includes = require('lodash/includes');
 const values = require('lodash/values');
-const path = require('path');
-const dotenv = require('dotenv');
 
 const { parseWeb } = require("./helpers/webHelper");
 const { parseNative } = require("./helpers/nativeHelper");
@@ -25,8 +23,6 @@ const init = (configurations) => {
     if (!includes(values(PARSER_TYPES), type)) {
       throw new Error('Type of parser should be "native" or "web"');
     }
-
-    dotenv.config({path: path.resolve(__dirname, `../.${type}.env`)});
 
     currentType = type;
     return {
