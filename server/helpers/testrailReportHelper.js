@@ -9,7 +9,12 @@ const startsWith = require('lodash/startsWith');
 const replace = require('lodash/replace');
 const split = require('lodash/split');
 const isArray = require('lodash/isArray');
-const flatten = require('lodash/flatten');
+
+const TEST_CASE_TYPES = {
+  common: 1,
+  web: 2,
+  native: 3,
+};
 
 const getAxiosConfig = () => ({
   headers: {
@@ -21,10 +26,13 @@ const getAxiosConfig = () => ({
   }
 })
 
-const addSection = async (sectionData, suiteId) => {
+const getProjectId = (type) => type === "native" ? process.env.TESTRAIL_NATIVE_PROJECT_ID : process.env.TESTRAIL_PROJECT_ID;
+
+const addSection = async (data) => {
+  const  { sectionData, suiteId, type } = data;
   try {
     const response = await axios.post(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/add_section/${process.env.TESTRAIL_PROJECT_ID}`,
+      `${process.env.TESTRAIL_URL}index.php?/api/v2/add_section/${getProjectId(type)}`,
       { ...sectionData, suite_id: suiteId },
       getAxiosConfig(),
     );
@@ -39,8 +47,9 @@ const addSection = async (sectionData, suiteId) => {
   }
 };
 
-const addCase = async (testCase, sectionId) => {
+const addCase = async (data) => {
   try {
+    const { testCase, sectionId } = data;
     const response = await axios.post(
       `${process.env.TESTRAIL_URL}index.php?/api/v2/add_case/${sectionId}`,
       testCase,
@@ -57,11 +66,14 @@ const addCase = async (testCase, sectionId) => {
   }
 };
 
-const getCasesBySectionId = async (sectionId, suiteId) => {
+const getTestCases = async (data) => {
   try {
-    // Fetch all sections in the project
+    const { sectionId, suiteId, type } = data;
+    const baseUrl = `${process.env.TESTRAIL_URL}index.php?/api/v2/get_cases/${getProjectId(type)}`;
+    const sectionUrlParam = `&section_id=${sectionId}`;
+    const caseUrl = `${baseUrl}&suite_id=${suiteId}${sectionId ? sectionUrlParam : ''}`;
     const response = await axios.get(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/get_cases/${process.env.TESTRAIL_PROJECT_ID}&suite_id=${suiteId}&section_id=${sectionId}`,
+      caseUrl,
       getAxiosConfig(),
     );
 
@@ -75,11 +87,12 @@ const getCasesBySectionId = async (sectionId, suiteId) => {
   }
 };
 
-const addSuite = async data => {
+const addSuite = async (data) => {
+  const { suiteData, type } = data;
   try {
     const response = await axios.post(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/add_suite/${process.env.TESTRAIL_PROJECT_ID}`,
-      data,
+      `${process.env.TESTRAIL_URL}index.php?/api/v2/add_suite/${getProjectId(type)}`,
+      suiteData,
       getAxiosConfig(),
     );
 
@@ -93,10 +106,11 @@ const addSuite = async data => {
   }
 };
 
-const getSuites = async () => {
+const getSuites = async (params) => {
   try {
+    const { type } = params;
     const response = await axios.get(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/get_suites/${process.env.TESTRAIL_PROJECT_ID}`,
+      `${process.env.TESTRAIL_URL}index.php?/api/v2/get_suites/${getProjectId(type)}`,
       getAxiosConfig(),
     );
 
@@ -110,39 +124,11 @@ const getSuites = async () => {
   }
 };
 
-const deleteSuite = async suiteId => {
+const getSections = async (params) => {
   try {
-    return axios.post(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/delete_suite/${suiteId}`,
-      { soft: 0 },
-      getAxiosConfig(),
-    );
-  } catch (error) {
-    console.error(
-      'Error deleting suite:',
-      error.response ? error.response.data : error.message,
-    );
-    throw error;
-  }
-};
-
-const deleteAllSuites = async () => {
-  try {
-    const suites = await getSuites();
-    return Promise.all(map(suites, suite => deleteSuite(suite.id)));
-  } catch (error) {
-    console.error(
-      'Error deleting all suites:',
-      error.response ? error.response.data : error.message,
-    );
-    throw error;
-  }
-};
-
-const getSections = async suiteId => {
-  try {
+    const { suiteId, type } = params;
     const response = await axios.get(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/get_sections/${process.env.TESTRAIL_PROJECT_ID}&suite_id=${suiteId}`,
+      `${process.env.TESTRAIL_URL}index.php?/api/v2/get_sections/${getProjectId(type)}&suite_id=${suiteId}`,
       getAxiosConfig(),
     );
 
@@ -156,10 +142,10 @@ const getSections = async suiteId => {
   }
 };
 
-const deleteSection = async sectionId => {
+const deleteSuite = async suiteId => {
   try {
     return axios.post(
-      `${process.env.TESTRAIL_URL}index.php?/api/v2/delete_section/${sectionId}`,
+      `${process.env.TESTRAIL_URL}index.php?/api/v2/delete_suite/${suiteId}`,
       {},
       getAxiosConfig(),
     );
@@ -172,18 +158,16 @@ const deleteSection = async sectionId => {
   }
 };
 
-const deleteAllSections = async () => {
+const deleteTestCase = async caseId => {
   try {
-    const suites = await getSuites();
-    const sectionsPromises = map(suites, suite => getSections(suite.id));
-    const sections = flatten(await Promise.all(sectionsPromises));
-
-    return map(sections, async section => {
-      await deleteSection(section.id);
-    });
+    return axios.post(
+      `${process.env.TESTRAIL_URL}index.php?/api/v2/delete_case/${caseId}`,
+      {},
+      getAxiosConfig(),
+    );
   } catch (error) {
     console.error(
-      'Error deleting all sections:',
+      'Error deleting section:',
       error.response ? error.response.data : error.message,
     );
     throw error;
@@ -203,6 +187,7 @@ const formatSteps = parsedData => {
 const numberKeywords = ['@priority_id:', '@type_id:'];
 
 const keywords = [
+  '@custom_type:',
   '@custom_preconds:',
   '@custom_expected:',
   '@step:',
@@ -219,6 +204,7 @@ const parseComments = commentBlock => {
   // Split the comment into lines
   const lines = split(commentBlock, '\n');
   const result = {
+    custom_type: '',
     custom_preconds: '',
     custom_expected: '',
     custom_execution_notes: '',
@@ -266,10 +252,11 @@ const parseComments = commentBlock => {
     custom_expected: result.custom_expected ? result.custom_expected[0] : null,
     custom_execution_notes: result.custom_execution_notes[0] || null,
     custom_severity: result.custom_severity || 1,
+    custom_type: result.custom_type ? TEST_CASE_TYPES[result.custom_type[0]] : null,
     priority_id: result.priority_id || 1,
     type_id: result.type_id || 1,
     refs: result.refs ? result.refs[0] : null,
-    steps: formatSteps(result) || null,
+    steps: formatSteps(result) || null
   };
 };
 
@@ -286,12 +273,12 @@ module.exports = {
   addSuite,
   addSection,
   addCase,
-  getCasesBySectionId,
+  getSuites,
+  getTestCases,
   getSections,
-  deleteSection,
-  deleteAllSections,
   deleteSuite,
-  deleteAllSuites,
   parseComments,
   extractCommentBlock,
+  deleteTestCase,
+  TEST_CASE_TYPES,
 };

@@ -1,52 +1,90 @@
-const { deleteAllSuites, addSuite, addSection } = require("./testrailReportHelper");
-const { extractAndParseCommentBlock } = require("./commonHelper");
+const { addSection, getSuites, getSections, TEST_CASE_TYPES } = require("./testrailReportHelper");
+const { getParsedObject, createCases, createSuiteAndSection, deleteWebTestCases} = require("./commonHelper");
 const map = require("lodash/map");
 const filter = require("lodash/filter");
-const isNull = require("lodash/isNull");
+const find = require("lodash/find");
+const head = require("lodash/head");
+const includes = require("lodash/includes");
 
 let isDeletedSuites = false;
-const addWebCaseHandler = async (data) => {
-  const { currentTest, section } = data;
-
-  return extractAndParseCommentBlock({
-    content: currentTest.body,
-    testName: currentTest.title,
-    section
-  });
-};
 
 const parseHandler = async (test) => {
   try {
     if (!isDeletedSuites) {
       console.log('START DELETE SUITES');
-      await deleteAllSuites();
+      await deleteWebTestCases();
       isDeletedSuites = true;
     }
 
-    console.log('START ADD SUITE');
-    const suite = await addSuite({
-      name: test.title
+    // Create test cases in web project
+    const parsedTests = map(test.tests, currentTest => getParsedObject({
+      content: currentTest.body,
+      testName: currentTest.title,
+    }));
+
+    const commonParsedTests  = filter(parsedTests, parsedTest => parsedTest && includes([TEST_CASE_TYPES.common], parsedTest.custom_type));
+    const webParsedTests  = filter(parsedTests, parsedTest => parsedTest && includes([TEST_CASE_TYPES.web, null], parsedTest.custom_type));
+
+    const suiteSectionData = await createSuiteAndSection({
+      testName: test.title,
+      type: 'web'
     });
 
-    console.log('CREATED SUITE: ', suite);
+    await createCases({
+      parsedTests: [...webParsedTests, ...commonParsedTests],
+      section: suiteSectionData.section
+    });
 
-    console.log('START ADD SECTION');
-    const section = await addSection({
-      name: test.title
-    }, suite.id);
+    // Create common test cases in native project
+    await createCommonTestCases({
+      testName: test.title,
+      commonParsedTests
+    });
 
-    console.log('CREATED SECTION: ', section);
-
-    console.log('START ADD CASES');
-
-    const promises = map(test.tests, async currentTest => addWebCaseHandler({currentTest, section}));
-    const cases = await Promise.all(promises);
-
-    console.log('CREATED CASES: ', filter(cases, testCase => !isNull(testCase)));
-    console.log('______________________________________________');
   } catch (error) {
     console.error(error.message);
   }
+}
+
+const createCommonTestCases = async (data) => {
+  const {
+    testName,
+    commonParsedTests
+  } = data;
+  const allNativeSuites = await getSuites({ type: 'native' });
+  const foundNativeSuite = find(allNativeSuites, suite => suite.name === testName);
+  let section;
+  let suiteId;
+
+  if (foundNativeSuite) {
+    suiteId = foundNativeSuite.id;
+    const sections = await getSections({ suiteId, type: 'native' });
+    section = head(sections);
+  }
+
+  if (!section) {
+    // Check if we need to create a new suite
+    if (!foundNativeSuite) {
+      // Create suite and its default section since no suite was found
+      const suiteSectionData = await createSuiteAndSection({
+        testName: testName,
+        type: 'native',
+      });
+      section = suiteSectionData.section;
+    } else {
+      // Create a section in the found suite
+      section = await addSection({
+        sectionData: { name: testName },
+        suiteId,
+        type: 'native',
+      });
+    }
+  }
+
+  await createCases({
+    parsedTests: commonParsedTests,
+    section
+  });
 }
 
 const parseWeb = async (params) => {
