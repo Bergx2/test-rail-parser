@@ -2,10 +2,9 @@ const flatten = require("lodash/flatten");
 const map = require("lodash/map");
 const filter = require("lodash/filter");
 const includes = require("lodash/includes");
+const groupBy = require("lodash/groupBy");
 
 const {
-  extractCommentBlock,
-  parseComments,
   addCase,
   getSuites,
   getTestCases,
@@ -16,6 +15,12 @@ const {
   addSection
 } = require("./testrailReportHelper");
 const isNull = require("lodash/isNull");
+const {parseComments, extractCommentBlock, extractIdAndTitle} = require("./parserHelper");
+const head = require("lodash/head");
+const split = require("lodash/split");
+const keys = require("lodash/keys");
+const some = require("lodash/some");
+const {getProjects} = require("test-rail-parser/server/helpers/testrailReportHelper");
 
 
 const getParsedObject = (data) => {
@@ -39,6 +44,7 @@ const getParsedObject = (data) => {
     custom_automation_status: extractedSections.custom_automation_status,
     custom_severity: extractedSections.custom_severity,
     custom_type: extractedSections.custom_type,
+    custom_id: null,
     priority_id: extractedSections.priority_id,
     type_id: extractedSections.type_id,
     refs: extractedSections.refs
@@ -151,33 +157,72 @@ const createCases = async (data) => {
 };
 
 const createSuiteAndSection = async (data) => {
-  const { testName, type } = data;
-  console.log('START ADD SUITE');
-  const suiteData = {
-    suiteData: {
-      name: testName
-    },
-    type
-  };
-  const suite = await addSuite(suiteData);
+  try {
+    const { testName, type } = data;
+    console.log('START ADD SUITE');
+    const suiteData = {
+      suiteData: {
+        name: testName
+      },
+      type
+    };
+    const suite = await addSuite(suiteData);
 
-  console.log('CREATED SUITE: ', suite);
+    console.log('CREATED SUITE: ', suite);
 
-  console.log('START ADD SECTION');
-  const sectionData = {
-    sectionData: {
-      name: testName
-    },
-    suiteId: suite.id,
-    type
-  };
-  const section = await addSection(sectionData);
+    console.log('START ADD SECTION');
+    const sectionData = {
+      sectionData: {
+        name: testName
+      },
+      suiteId: suite.id,
+      type
+    };
+    const section = await addSection(sectionData);
 
-  console.log('CREATED SECTION: ', section);
+    console.log('CREATED SECTION: ', section);
 
-  return {
-    section,
-    suite
+    return {
+      section,
+      suite
+    }
+  } catch(error) {
+    throw error;
+  }
+}
+
+const getAllCreatingSuites = (tests) => map(tests, test => ({
+  title: test.title,
+  ...extractIdAndTitle(test.title)
+}));
+
+const getAllExistingSuites = (suites) => map(suites, suite => ({
+  ...suite,
+  ...extractIdAndTitle(suite.name)
+}));
+
+const getAllExistingCases = async (data) => {
+  const { suites, type } = data;
+  const testCasesPromises = map(suites, suite => getTestCases({ type, suiteId: suite.id }));
+  const testCases = await Promise.all(testCasesPromises);
+  return groupBy(flatten(testCases), 'suite_id');
+};
+
+const getProjectName = (testName) => {
+  const currentProjectName = head(split(testName, ":"));
+  return includes(keys(getProjects()), currentProjectName) ? currentProjectName : null;
+};
+
+const deleteSuitesInProjects = async (data) => {
+  try {
+    const { projects, suites } = data;
+    const filteredSuites = filter(suites, suite =>
+      some(projects, project => includes(suite.name, project)));
+
+    const deletePromises = map(filteredSuites, suite => deleteSuite(suite.id));
+    await Promise.all(deletePromises);
+  } catch (error) {
+    throw error;
   }
 }
 
@@ -189,5 +234,10 @@ module.exports = {
   deleteWebTestCases,
   deleteNativeTestCases,
   createCases,
-  createSuiteAndSection
+  createSuiteAndSection,
+  getAllCreatingSuites,
+  getAllExistingSuites,
+  getAllExistingCases,
+  getProjectName,
+  deleteSuitesInProjects
 };
