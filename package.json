@@ -1,0 +1,57 @@
+{
+  "name": "test-rail-parser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server/index.js",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "prettier": "./node_modules/.bin/prettier --write 'server/**/*.js'",
+    "prettier:ci": "./node_modules/.bin/prettier --check 'server/**/*.js'",
+    "lint": "eslint \"server/**/*.js\"",
+    "prepare-husky": "husky"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "server/**/*.js": [
+      "npm run prettier",
+      "npm run lint",
+      "git add"
+    ]
+  },
+  "dependencies": {
+    "axios": "^1.7.3",
+    "bottleneck": "^2.19.5",
+    "dotenv": "^16.0.3",
+    "lodash": "^4.17.21",
+    "logform": "^2.6.1",
+    "winston": "^3.15.0",
+    "winston-transport": "^4.6.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.52.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-bs-common": "git://github.com/Bergx2/eslint-config-bs-common#d096fe4",
+    "eslint-config-bs-typescript": "git://github.com/Bergx2/eslint-config-bs-typescript",
+    "eslint-config-prettier": "^6.3.0",
+    "eslint-plugin-check-file": "^1.3.0",
+    "eslint-plugin-disable": "^1.0.5",
+    "eslint-plugin-import": "^2.25.2",
+    "eslint-plugin-jsdoc": "^40.0.3",
+    "eslint-plugin-json": "^1.2.0",
+    "eslint-plugin-lodash": "^7.3.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "eslint-plugin-sonarjs": "^0.21.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^9.4.0",
+    "prettier": "^1.18.2"
+  },
+  "engines": {
+    "node": "18.14.*"
+  }
+}
