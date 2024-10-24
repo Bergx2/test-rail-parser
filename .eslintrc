@@ -1,0 +1,48 @@
+{
+  "extends": [
+    "prettier",
+    "plugin:lodash/recommended",
+    "eslint:recommended",
+    "plugin:node/recommended",
+    "eslint-config-bs-common"
+  ],
+  "env": {
+    "jest": true,
+    "node": true,
+    "es6": true,
+    "commonjs": true
+  },
+  "rules": {
+    "no-param-reassign": [2, {
+      "props": false
+    }],
+    "camelcase": 0,
+    "new-cap": 0,
+    "max-len": ["error", 150],
+    "no-unused-expressions": 0,
+    "class-methods-use-this": 0,
+    "no-plusplus": 0,
+    "no-process-exit": 0,
+    "node/no-deprecated-api": 0,
+    "node/no-missing-import": 0,
+    "node/no-unsupported-features/es-syntax": 0,
+    "no-return-assign": 0,
+    "function-paren-newline": 0,
+    "linebreak-style": 0,
+    "react/no-danger": 0,
+    "prefer-arrow/prefer-arrow-functions": ["error"],
+    "lodash/prefer-lodash-method": [2],
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": ["lodash"],
+        "patterns": ["!lodash/*"]
+      }
+    ]
+  },
+  "parserOptions": {
+    "ecmaVersion": 2018,
+    "sourceType": "module"
+  },
+  "plugins": ["json", "lodash", "prefer-arrow"]
+}
