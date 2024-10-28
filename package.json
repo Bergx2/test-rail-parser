@@ -1,0 +1,52 @@
+{
+  "name": "test-rail-parser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server/index.js",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "start": "node 'server/some.js'",
+    "prettier": "./node_modules/.bin/prettier --write 'server/**/*.js'",
+    "prettier:ci": "./node_modules/.bin/prettier --check 'server/**/*.js'",
+    "lint": "eslint \"server/**/*.js\"",
+    "prepare-husky": "husky init",
+    "setup-husky": "echo '#!/bin/sh\n. \"$(dirname \"$0\")/_/husky.sh\"\nnpx lint-staged' > .husky/pre-commit && chmod +x .husky/pre-commit"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "server/**/*.js": [
+      "npm run prettier",
+      "npm run lint",
+      "git add"
+    ]
+  },
+  "dependencies": {
+    "axios": "^1.7.3",
+    "dotenv": "^16.0.3",
+    "lodash": "^4.17.21",
+    "winston": "^3.15.0",
+    "winston-transport": "^4.6.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.52.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-bs-common": "git://github.com/Bergx2/eslint-config-bs-common#d096fe4",
+    "eslint-config-prettier": "^6.3.0",
+    "eslint-plugin-disable": "^1.0.5",
+    "eslint-plugin-json": "^1.2.0",
+    "eslint-plugin-lodash": "^7.3.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "husky": "^9.1.6",
+    "lint-staged": "^9.4.0",
+    "prettier": "^1.18.2"
+  },
+  "engines": {
+    "node": "18.14.*"
+  }
+}
