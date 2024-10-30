@@ -5,12 +5,20 @@ const compact = require('lodash/compact');
 const pick = require('lodash/pick');
 const { addResource, getProjectName } = require('./testrailHelper');
 const logger = require('../utils/logger');
+const { getResources } = require('./testrailHelper');
 
 const createCase = testCase =>
   addResource({
     resourceData: testCase,
     id: testCase.section_id,
     endpoint: 'add_case',
+  });
+
+const getCases = data =>
+  getResources({
+    resourceData: { suite_id: data.id },
+    id: data.project_id,
+    endpoint: 'get_cases',
   });
 
 const createProjectCases = async createRepoProjectCases => {
@@ -33,4 +41,5 @@ const createProjectCases = async createRepoProjectCases => {
 module.exports = {
   createCase,
   createProjectCases,
+  getCases,
 };

@@ -8,7 +8,6 @@ const {
   deleteResource,
   getProjectId,
   addResource,
-  getProjectName,
   getResources,
 } = require('./testrailHelper');
 const logger = require('../utils/logger');
@@ -38,6 +37,22 @@ const createSuite = async data => {
   return suite;
 };
 
+const getFormattedProjectsSuites = data => {
+  const suites = flatten(data.suites);
+  return reduce(
+    data.projects,
+    (result, projectName) => {
+      const relatedSuites = filter(suites, {
+        project_id: getProjectId(projectName),
+      });
+
+      result[projectName] = relatedSuites;
+      return result;
+    },
+    {},
+  );
+};
+
 const getAllTestrailSuites = async projects => {
   const projectIds = map(projects, getProjectId);
   const resourcePromises = map(projectIds, id =>
@@ -46,6 +61,7 @@ const getAllTestrailSuites = async projects => {
 
   const suites = await Promise.all(resourcePromises);
 
+  // return getformattedProjectsSuites({ projects, suites });
   return flatten(suites);
 };
 
@@ -54,4 +70,5 @@ module.exports = {
   getSuiteName,
   createSuite,
   getAllTestrailSuites,
+  getFormattedProjectsSuites,
 };

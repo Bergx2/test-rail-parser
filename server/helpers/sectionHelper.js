@@ -1,7 +1,9 @@
 const pick = require('lodash/pick');
 const get = require('lodash/get');
+const map = require('lodash/map');
+const flatMap = require('lodash/flatMap');
 const logger = require('../utils/logger');
-const { addResource } = require('./testrailHelper');
+const { addResource, getResources } = require('./testrailHelper');
 
 const createSection = async data => {
   logger.log('info', 'START ADD SECTION');
@@ -24,6 +26,20 @@ const createSection = async data => {
   return section;
 };
 
+const getAllTestrailSections = async suites => {
+  const resourcePromises = map(suites, suite =>
+    getResources({
+      id: suite.project_id,
+      endpoint: 'get_sections',
+      resourceData: { suite_id: suite.id },
+    }),
+  );
+
+  const sections = await Promise.all(resourcePromises);
+  return flatMap(sections, 'sections');
+};
+
 module.exports = {
   createSection,
+  getAllTestrailSections,
 };
