@@ -12,7 +12,7 @@ const {
 } = require('./testrailHelper');
 const logger = require('../utils/logger');
 
-const deleteAllSuites = suites => {
+const deleteSuites = suites => {
   const deleteSuitePromises = map(suites, suite =>
     deleteResource({ id: suite.id, endpoint: 'delete_suite' }),
   );
@@ -49,7 +49,7 @@ const getAllTestrailSuites = async projects => {
 };
 
 module.exports = {
-  deleteAllSuites,
+  deleteSuites,
   getSuiteName,
   createSuite,
   getAllTestrailSuites,

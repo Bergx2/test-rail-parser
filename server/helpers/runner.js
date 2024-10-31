@@ -17,7 +17,7 @@ const {
   getTestrailTestCases,
   getUpdateCreateTestCases,
 } = require('./runnerHelper');
-const { deleteAllSuites, getAllTestrailSuites } = require('./suiteHelper');
+const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
 const { createSuitesSections } = require('./commonHelper');
 const { getProjects, addResource } = require('./testrailHelper');
 const { createProjectCases } = require('./testCaseHelper');
@@ -40,8 +40,8 @@ const updateTestCases = data => {
 };
 
 const createTestCases = async data => {
-  const { projects, createTestrailTestCases, suites, sections } = data;
-  const createSuiteNames = uniq(flatMap(createTestrailTestCases, 'suiteName'));
+  const { projects, createTestCases, suites, sections } = data;
+  const createSuiteNames = uniq(map(flatMap(createTestCases), 'suiteName'));
   const testrailSuiteNames = uniq(map(suites, 'name'));
   const filteredCreateSuiteNames = filter(
     createSuiteNames,
@@ -49,9 +49,7 @@ const createTestCases = async data => {
   );
 
   const createSuiteSectionPromises = map(projects, project => {
-    const projectSuiteNames = uniq(
-      map(createTestrailTestCases[project], 'suiteName'),
-    );
+    const projectSuiteNames = uniq(map(createTestCases[project], 'suiteName'));
     return createSuitesSections({
       suiteNames: filter(projectSuiteNames, suiteName =>
         includes(filteredCreateSuiteNames, suiteName),
@@ -68,7 +66,7 @@ const createTestCases = async data => {
 
   const createProjectCasePromises = map(projects, project => {
     const preparedParsedTestCases = getPreparedParsedTestCases({
-      testCases: createTestrailTestCases[project],
+      testCases: createTestCases[project],
       testrailProjectSuites: allSuites,
       testrailProjectSections: allSections,
     });
@@ -81,7 +79,7 @@ const createTestCases = async data => {
 
 const deleteSuitesInProject = async projects => {
   const suites = await getAllTestrailSuites(projects);
-  return deleteAllSuites(flatMap(suites));
+  return deleteSuites(flatMap(suites));
 };
 
 const parseHandler = async describes => {
@@ -90,7 +88,7 @@ const parseHandler = async describes => {
   // await deleteSuitesInProject(projects);
 
   const parsedTestCases = getParsedTestCases(describes);
-  const testCases = getTestCases({ projects, parsedTestCases });
+  const projectTestCases = getTestCases({ projects, parsedTestCases });
 
   const suites = await getAllTestrailSuites(projects);
   const testrailTestCases = await getTestrailTestCases({ projects, suites });
@@ -98,13 +96,13 @@ const parseHandler = async describes => {
 
   const updateTestrailTestCases = getUpdateCreateTestCases({
     projects,
-    testCases,
+    testCases: projectTestCases,
     testrailTestCases,
     isUpdate: true,
   });
   const createTestrailTestCases = getUpdateCreateTestCases({
     projects,
-    testCases,
+    testCases: projectTestCases,
     testrailTestCases: updateTestrailTestCases,
     isUpdate: false,
   });
@@ -115,7 +113,7 @@ const parseHandler = async describes => {
   });
 
   await createTestCases({
-    createTestrailTestCases,
+    createTestCases: createTestrailTestCases,
     projects,
     sections,
     suites,
