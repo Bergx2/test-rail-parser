@@ -1,10 +1,6 @@
 const keys = require('lodash/keys');
 const flatMap = require('lodash/flatMap');
 const map = require('lodash/map');
-const uniq = require('lodash/uniq');
-const flatten = require('lodash/flatten');
-const includes = require('lodash/includes');
-const filter = require('lodash/filter');
 const concat = require('lodash/concat');
 const get = require('lodash/get');
 
@@ -15,66 +11,79 @@ const {
   getPreparedParsedTestCases,
   getTestCases,
   getTestrailTestCases,
-  getUpdateCreateTestCases,
+  getPreparedTestrailTestCases,
 } = require('./runnerHelper');
-const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
-const { createSuitesSections } = require('./commonHelper');
-const { getProjects, addResource } = require('./testrailHelper');
+const {
+  getAllTestrailSuites,
+  deleteSuites,
+  getSuiteObjects,
+} = require('./suiteHelper');
+const { createSuiteAndSection } = require('./commonHelper');
+const { getProjects, addResource, getProjectId } = require('./testrailHelper');
 const { createProjectCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
 
 const allDescribes = [];
 
-const updateTestCases = data => {
-  const { projects, updateTestrailTestCases } = data;
-  const updateSuiteSectionPromises = map(projects, project =>
-    map(get(updateTestrailTestCases, project, []), updateTestrailTestCase =>
-      addResource({
-        resourceData: updateTestrailTestCase,
-        endpoint: 'update_case',
-        id: get(updateTestrailTestCase, 'id'),
-      }),
-    ),
+const updateTestCasesTemp = async data => {
+  const {
+    projectsTestCases,
+    projectsTestrailTestCases,
+    suiteNameObjects,
+    suites,
+    sections,
+  } = data;
+  let allSuites = suites;
+  let allSections = sections;
+  const projectPromises = map(
+    projectsTestCases,
+    (projectTestCases, project) => {
+      const suitePromises = map(
+        projectTestCases,
+        async (suiteTestCases, suiteName) => {
+          if (!get(projectsTestrailTestCases, `${project}${suiteName}`)) {
+            const suiteSection = await createSuiteAndSection({
+              id: getProjectId(project),
+              name: suiteName,
+            });
+            allSuites = concat(allSuites, suiteSection.suite);
+            allSections = concat(allSections, suiteSection.section);
+          }
+
+          const casePromises = map(
+            suiteTestCases,
+            async (suiteTestCase, customId) => {
+              const projectsTestrailTestCase = get(
+                projectsTestrailTestCases,
+                `${project}${suiteName}${customId}`,
+                null,
+              );
+              if (projectsTestrailTestCase) {
+                // update test case
+                return addResource({
+                  resourceData: suiteTestCase,
+                  endpoint: 'update_case',
+                  id: get(projectsTestrailTestCase, 'id'),
+                });
+              }
+              // create test case with suiteTestCase
+              const preparedParsedTestCases = getPreparedParsedTestCases({
+                testCases: [suiteTestCase],
+                testrailProjectSuites: allSuites,
+                testrailProjectSections: allSections,
+              });
+
+              return createProjectCases(preparedParsedTestCases);
+            },
+          );
+          return Promise.all(casePromises);
+        },
+      );
+      return Promise.all(suitePromises);
+    },
   );
-  return Promise.all(updateSuiteSectionPromises);
-};
 
-const createTestCases = async data => {
-  const { projects, createTestCases, suites, sections } = data;
-  const createSuiteNames = uniq(map(flatMap(createTestCases), 'suiteName'));
-  const testrailSuiteNames = uniq(map(suites, 'name'));
-  const filteredCreateSuiteNames = filter(
-    createSuiteNames,
-    createSuiteName => !includes(testrailSuiteNames, createSuiteName),
-  );
-
-  const createSuiteSectionPromises = map(projects, project => {
-    const projectSuiteNames = uniq(map(createTestCases[project], 'suiteName'));
-    return createSuitesSections({
-      suiteNames: filter(projectSuiteNames, suiteName =>
-        includes(filteredCreateSuiteNames, suiteName),
-      ),
-      projectName: project,
-    });
-  });
-
-  let suitesSections = await Promise.all(createSuiteSectionPromises);
-  suitesSections = flatten(suitesSections);
-
-  const allSuites = concat(map(suitesSections, 'suite'), suites);
-  const allSections = concat(map(suitesSections, 'section'), sections);
-
-  const createProjectCasePromises = map(projects, project => {
-    const preparedParsedTestCases = getPreparedParsedTestCases({
-      testCases: createTestCases[project],
-      testrailProjectSuites: allSuites,
-      testrailProjectSections: allSections,
-    });
-
-    return createProjectCases(preparedParsedTestCases);
-  });
-
-  return Promise.all(createProjectCasePromises);
+  await Promise.all(projectPromises);
 };
 
 const deleteSuitesInProject = async projects => {
@@ -84,39 +93,36 @@ const deleteSuitesInProject = async projects => {
 
 const parseHandler = async describes => {
   const projects = keys(getProjects());
-
   // await deleteSuitesInProject(projects);
 
   const parsedTestCases = getParsedTestCases(describes);
-  const projectTestCases = getTestCases({ projects, parsedTestCases });
 
-  const suites = await getAllTestrailSuites(projects);
-  const testrailTestCases = await getTestrailTestCases({ projects, suites });
+  const { suites, suiteIdObjects, suiteNameObjects } = await getSuiteObjects(
+    projects,
+  );
+  const testrailTestCases = await getTestrailTestCases({
+    projects,
+    suiteIdObjects,
+  });
   const sections = await getAllTestrailSections(suites);
 
-  const updateTestrailTestCases = getUpdateCreateTestCases({
+  const projectsTestCases = getTestCases({
     projects,
-    testCases: projectTestCases,
-    testrailTestCases,
-    isUpdate: true,
+    testCases: parsedTestCases,
   });
-  const createTestrailTestCases = getUpdateCreateTestCases({
+  const projectsTestrailTestCases = getPreparedTestrailTestCases({
     projects,
-    testCases: projectTestCases,
-    testrailTestCases: updateTestrailTestCases,
-    isUpdate: false,
+    testCases: testrailTestCases,
+    isTestrail: true,
+    suiteNameObjects,
   });
 
-  await updateTestCases({
-    updateTestrailTestCases,
-    projects,
-  });
-
-  await createTestCases({
-    createTestCases: createTestrailTestCases,
-    projects,
-    sections,
+  await updateTestCasesTemp({
+    projectsTestCases,
+    projectsTestrailTestCases,
+    suiteNameObjects,
     suites,
+    sections,
   });
 
   process.exit();
@@ -182,4 +188,5 @@ const runner = async params => {
 
 module.exports = {
   runner,
+  parseHandler,
 };
