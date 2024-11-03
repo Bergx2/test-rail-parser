@@ -41,7 +41,8 @@ const updateTestCasesTemp = async data => {
       const suitePromises = map(
         projectTestCases,
         async (suiteTestCases, suiteName) => {
-          if (!get(projectsTestrailTestCases, `${project}${suiteName}`)) {
+          // eslint-disable-next-line lodash/path-style
+          if (!get(projectsTestrailTestCases, [project, suiteName])) {
             const suiteSection = await createSuiteAndSection({
               id: getProjectId(project),
               name: suiteName,
@@ -55,7 +56,7 @@ const updateTestCasesTemp = async data => {
             async (suiteTestCase, customId) => {
               const projectsTestrailTestCase = get(
                 projectsTestrailTestCases,
-                `${project}${suiteName}${customId}`,
+                [project, suiteName, customId], // eslint-disable-line lodash/path-style
                 null,
               );
               if (projectsTestrailTestCase) {

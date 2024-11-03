@@ -3,8 +3,10 @@ const set = require('lodash/set');
 const reduce = require('lodash/reduce');
 const find = require('lodash/find');
 const mapValues = require('lodash/mapValues');
+const assign = require('lodash/assign');
 const forEach = require('lodash/forEach');
 const filter = require('lodash/filter');
+const pickBy = require('lodash/pickBy');
 const flatMap = require('lodash/flatMap');
 const compact = require('lodash/compact');
 const replace = require('lodash/replace');
@@ -81,9 +83,13 @@ const getPreparedTestrailTestCases = data => {
   return reduce(
     projects,
     (acc, project) => {
-      const projectTestCases = filter(testCases, 'projectId');
-
-      const groupedObject = mapValues(suiteNameObjects, () => ({}));
+      const projectTestCases = filter(testCases, {
+        projectId: getProjectId(project),
+      });
+      const groupedObject = mapValues(
+        pickBy(suiteNameObjects, { projectId: getProjectId(project) }),
+        () => ({}),
+      );
 
       if (projectTestCases.length > 0) {
         forEach(projectTestCases, item => {
@@ -91,7 +97,10 @@ const getPreparedTestrailTestCases = data => {
           const customId = item.custom_id;
 
           if (groupedObject[suiteName]) {
-            groupedObject[suiteName][customId] = item;
+            assign(groupedObject[suiteName], {
+              ...groupedObject[suiteName],
+              [customId]: item,
+            });
           }
         });
       }

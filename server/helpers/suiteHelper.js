@@ -71,6 +71,7 @@ const getSuiteObjects = async projects => {
         assign(acc, {
           [suite.name]: {
             id: suite.id,
+            projectId: suite.project_id,
           },
         }),
       {},
