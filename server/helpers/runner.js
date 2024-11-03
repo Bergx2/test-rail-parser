@@ -2,7 +2,9 @@ const keys = require('lodash/keys');
 const flatMap = require('lodash/flatMap');
 const map = require('lodash/map');
 const concat = require('lodash/concat');
+const flatten = require('lodash/flatten');
 const get = require('lodash/get');
+const difference = require('lodash/difference');
 
 const logger = require('../utils/logger');
 
@@ -20,7 +22,7 @@ const {
 } = require('./suiteHelper');
 const { createSuiteAndSection } = require('./commonHelper');
 const { getProjects, addResource, getProjectId } = require('./testrailHelper');
-const { createProjectCases } = require('./testCaseHelper');
+const { createProjectCases, deleteCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
 
 const allDescribes = [];
@@ -35,9 +37,27 @@ const updateTestCasesTemp = async data => {
   } = data;
   let allSuites = suites;
   let allSections = sections;
+  const deleteTestrailSuites = [];
+  const deleteTestrailCases = [];
   const projectPromises = map(
     projectsTestCases,
-    (projectTestCases, project) => {
+    async (projectTestCases, project) => {
+      // delete suites
+      const projectTestrailSuiteNames = keys(
+        get(projectsTestrailTestCases, project),
+      );
+      const projectSuiteNames = keys(projectTestCases);
+      const deleteSuiteNames = difference(
+        projectTestrailSuiteNames,
+        projectSuiteNames,
+      );
+      deleteTestrailSuites.push(
+        map(
+          deleteSuiteNames,
+          deleteSuiteName => suiteNameObjects[deleteSuiteName],
+        ),
+      );
+
       const suitePromises = map(
         projectTestCases,
         async (suiteTestCases, suiteName) => {
@@ -49,6 +69,28 @@ const updateTestCasesTemp = async data => {
             });
             allSuites = concat(allSuites, suiteSection.suite);
             allSections = concat(allSections, suiteSection.section);
+          } else {
+            // delete test cases
+            // eslint-disable-next-line lodash/path-style
+            const projectsTestrailSuiteTestCases = get(
+              projectsTestrailTestCases,
+              [project, suiteName], // eslint-disable-line lodash/path-style
+            );
+            const projectTestrailCaseNames = keys(
+              projectsTestrailSuiteTestCases,
+            );
+            const projectCaseNames = keys(suiteTestCases);
+            const deleteCaseNames = difference(
+              projectTestrailCaseNames,
+              projectCaseNames,
+            );
+            deleteTestrailCases.push(
+              map(
+                deleteCaseNames,
+                deleteCaseName =>
+                  projectsTestrailSuiteTestCases[deleteCaseName],
+              ),
+            );
           }
 
           const casePromises = map(
@@ -80,11 +122,13 @@ const updateTestCasesTemp = async data => {
           return Promise.all(casePromises);
         },
       );
-      return Promise.all(suitePromises);
+      await Promise.all(suitePromises);
     },
   );
 
   await Promise.all(projectPromises);
+  await deleteCases(flatten(deleteTestrailCases));
+  await deleteSuites(flatten(deleteTestrailSuites));
 };
 
 const deleteSuitesInProject = async projects => {
@@ -111,6 +155,7 @@ const parseHandler = async describes => {
     projects,
     testCases: parsedTestCases,
   });
+
   const projectsTestrailTestCases = getPreparedTestrailTestCases({
     projects,
     testCases: testrailTestCases,
@@ -189,5 +234,4 @@ const runner = async params => {
 
 module.exports = {
   runner,
-  parseHandler,
 };
