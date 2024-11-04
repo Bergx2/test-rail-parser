@@ -24,7 +24,7 @@ const {
 } = require('./suiteHelper');
 const { createSuiteAndSection } = require('./commonHelper');
 const { getProjects, addResource, getProjectId } = require('./testrailHelper');
-const { createProjectCases } = require('./testCaseHelper');
+const { createProjectCases, deleteCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
 
 const allDescribes = [];
@@ -48,6 +48,29 @@ const updateTestCases = async data => {
         customIds,
         customId => !includes(testrailCustomIds, customId),
       );
+      const deleteCustomIds = filter(
+        testrailCustomIds,
+        testrailCustomId => !includes(updateCustomIds, testrailCustomId),
+      );
+      const deleteTestCases = map(
+        deleteCustomIds,
+        deleteCustomId => projectsTestrailTestCases[project][deleteCustomId],
+      );
+      const existingSuiteNames = map(
+        flatten([createCustomIds, updateCustomIds]),
+        customId => get(projectTestCases, [customId, 'suiteName']), // eslint-disable-line lodash/path-style
+      );
+      const deleteSuiteNames = filter(
+        map(deleteTestCases, 'suiteName'),
+        deleteSuiteName => !includes(existingSuiteNames, deleteSuiteName),
+      );
+      const deleteTestrailSuites = filter(suites, suite =>
+        includes(deleteSuiteNames, suite.name),
+      );
+
+      await deleteCases(deleteTestCases);
+      await deleteSuites(deleteTestrailSuites);
+
       const updatePromises = map(updateCustomIds, updateCustomId => {
         return addResource({
           resourceData: get(projectTestCases, [updateCustomId]), // eslint-disable-line lodash/path-style
@@ -122,19 +145,16 @@ const parseHandler = async describes => {
     isTestrail: true,
   });
 
-  let suitesSections = await createSuitesAndSections({
+  const suitesSections = await createSuitesAndSections({
     projectsTestCases,
     suiteNameObjects,
   });
-  suitesSections = flatten(suitesSections);
-  const allSuites = concat(map(suitesSections, 'suite'), suites);
-  const allSections = concat(map(suitesSections, 'section'), sections);
 
   await updateTestCases({
     projectsTestCases,
     projectsTestrailTestCases,
-    suites: allSuites,
-    sections: allSections,
+    suites: concat(map(flatten(suitesSections), 'suite'), suites),
+    sections: concat(map(flatten(suitesSections), 'section'), sections),
   });
 
   process.exit();
