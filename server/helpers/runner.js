@@ -101,8 +101,7 @@ const parseHandler = async describes => {
   const projects = keys(getProjects());
   await deleteSuitesInProject(projects);
 
-  // const parsedTestCases = getParsedTestCases(describes);
-  const parsedTestCases = describes;
+  const parsedTestCases = getParsedTestCases(describes);
   const suites = await getAllTestrailSuites(projects);
   const testrailTestCases = await getTestrailTestCases(suites);
   const sections = await getAllTestrailSections(suites);
