@@ -25,7 +25,7 @@ const { getAllTestrailSections } = require('./sectionHelper');
 
 const allDescribes = [];
 
-const updateTestCasesTemp = async data => {
+const updateTestCases = async data => {
   const {
     projectsTestCases,
     projectsTestrailTestCases,
@@ -118,7 +118,7 @@ const parseHandler = async describes => {
     suiteNameObjects,
   });
 
-  await updateTestCasesTemp({
+  await updateTestCases({
     projectsTestCases,
     projectsTestrailTestCases,
     suiteNameObjects,
