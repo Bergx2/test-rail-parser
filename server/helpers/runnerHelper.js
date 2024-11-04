@@ -1,12 +1,9 @@
 const map = require('lodash/map');
 const set = require('lodash/set');
 const reduce = require('lodash/reduce');
+const keyBy = require('lodash/keyBy');
 const find = require('lodash/find');
-const mapValues = require('lodash/mapValues');
-const assign = require('lodash/assign');
-const forEach = require('lodash/forEach');
 const filter = require('lodash/filter');
-const pickBy = require('lodash/pickBy');
 const flatMap = require('lodash/flatMap');
 const compact = require('lodash/compact');
 const replace = require('lodash/replace');
@@ -40,71 +37,26 @@ const getProjectTestCases = data => {
   );
 };
 
-const getTestCases = data => {
-  const { projects, testCases } = data;
+const getProjectsTestCases = data => {
+  const { projects, testCases, isTestrail } = data;
   return reduce(
     projects,
     (acc, project) => {
-      const projectTestCases = getProjectTestCases({
-        testCases: map(testCases, parsedTestCase => ({
-          ...parsedTestCase,
-          custom_id: `${project}:${Buffer.from(parsedTestCase.title).toString(
-            'base64',
-          )}`,
-        })),
-        project,
-      });
-
-      const suiteTestCases = reduce(
-        projectTestCases,
-        (result, item) => {
-          const { suiteName } = item;
-          const customId = item.custom_id;
-
-          if (!result[suiteName]) {
-            result[suiteName] = {};
-          }
-
-          result[suiteName][customId] = item;
-
-          return result;
-        },
-        {},
-      );
-
-      return set(acc, project, suiteTestCases);
-    },
-    {},
-  );
-};
-
-const getPreparedTestrailTestCases = data => {
-  const { projects, testCases, suiteNameObjects } = data;
-  return reduce(
-    projects,
-    (acc, project) => {
-      const projectTestCases = filter(testCases, {
+      let projectTestCases = filter(testCases, {
         projectId: getProjectId(project),
       });
-      const groupedObject = mapValues(
-        pickBy(suiteNameObjects, { projectId: getProjectId(project) }),
-        () => ({}),
-      );
-
-      if (projectTestCases.length > 0) {
-        forEach(projectTestCases, item => {
-          const { suiteName } = item;
-          const customId = item.custom_id;
-
-          if (groupedObject[suiteName]) {
-            assign(groupedObject[suiteName], {
-              ...groupedObject[suiteName],
-              [customId]: item,
-            });
-          }
+      if (!isTestrail) {
+        projectTestCases = getProjectTestCases({
+          testCases: map(testCases, parsedTestCase => ({
+            ...parsedTestCase,
+            custom_id: `${project}:${Buffer.from(parsedTestCase.title).toString(
+              'base64',
+            )}`,
+          })),
+          project,
         });
       }
-      return set(acc, project, groupedObject);
+      return set(acc, project, keyBy(projectTestCases, 'custom_id'));
     },
     {},
   );
@@ -162,14 +114,14 @@ const getTestrailTestCases = async data => {
     return {
       ...testCase,
       ...suiteIdObjects[testCase.suite_id],
+      toDelete: true,
     };
   });
 };
 
 module.exports = {
   getPreparedParsedTestCases,
-  getTestCases,
+  getProjectsTestCases,
   getParsedTestCases,
   getTestrailTestCases,
-  getPreparedTestrailTestCases,
 };

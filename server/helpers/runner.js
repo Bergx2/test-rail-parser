@@ -3,15 +3,19 @@ const flatMap = require('lodash/flatMap');
 const map = require('lodash/map');
 const concat = require('lodash/concat');
 const get = require('lodash/get');
+const flatten = require('lodash/flatten');
+const uniq = require('lodash/uniq');
+const has = require('lodash/has');
+const filter = require('lodash/filter');
+const includes = require('lodash/includes');
 
 const logger = require('../utils/logger');
 
 const {
   getParsedTestCases,
   getPreparedParsedTestCases,
-  getTestCases,
   getTestrailTestCases,
-  getPreparedTestrailTestCases,
+  getProjectsTestCases,
 } = require('./runnerHelper');
 const {
   getAllTestrailSuites,
@@ -29,62 +33,62 @@ const updateTestCases = async data => {
   const {
     projectsTestCases,
     projectsTestrailTestCases,
-    suiteNameObjects,
     suites,
     sections,
   } = data;
-  let allSuites = suites;
-  let allSections = sections;
   const projectPromises = map(
     projectsTestCases,
-    (projectTestCases, project) => {
-      const suitePromises = map(
-        projectTestCases,
-        async (suiteTestCases, suiteName) => {
-          // eslint-disable-next-line lodash/path-style
-          if (!get(projectsTestrailTestCases, [project, suiteName])) {
-            const suiteSection = await createSuiteAndSection({
-              id: getProjectId(project),
-              name: suiteName,
-            });
-            allSuites = concat(allSuites, suiteSection.suite);
-            allSections = concat(allSections, suiteSection.section);
-          }
-
-          const casePromises = map(
-            suiteTestCases,
-            async (suiteTestCase, customId) => {
-              const projectsTestrailTestCase = get(
-                projectsTestrailTestCases,
-                [project, suiteName, customId], // eslint-disable-line lodash/path-style
-                null,
-              );
-              if (projectsTestrailTestCase) {
-                // update test case
-                return addResource({
-                  resourceData: suiteTestCase,
-                  endpoint: 'update_case',
-                  id: get(projectsTestrailTestCase, 'id'),
-                });
-              }
-              // create test case with suiteTestCase
-              const preparedParsedTestCases = getPreparedParsedTestCases({
-                testCases: [suiteTestCase],
-                testrailProjectSuites: allSuites,
-                testrailProjectSections: allSections,
-              });
-
-              return createProjectCases(preparedParsedTestCases);
-            },
-          );
-          return Promise.all(casePromises);
-        },
+    async (projectTestCases, project) => {
+      const testrailCustomIds = keys(projectsTestrailTestCases[project]);
+      const customIds = keys(projectTestCases);
+      const updateCustomIds = filter(customIds, customId =>
+        includes(testrailCustomIds, customId),
       );
-      return Promise.all(suitePromises);
+      const createCustomIds = filter(
+        customIds,
+        customId => !includes(testrailCustomIds, customId),
+      );
+      const updatePromises = map(updateCustomIds, updateCustomId => {
+        return addResource({
+          resourceData: get(projectTestCases, [updateCustomId]), // eslint-disable-line lodash/path-style
+          endpoint: 'update_case',
+          id: get(projectsTestrailTestCases, [project, updateCustomId, 'id']), // eslint-disable-line lodash/path-style
+        });
+      });
+
+      await Promise.all(updatePromises);
+      return createProjectCases(
+        getPreparedParsedTestCases({
+          testCases: map(
+            createCustomIds,
+            createCustomId => get(projectTestCases, [createCustomId]), // eslint-disable-line lodash/path-style
+          ),
+          testrailProjectSuites: suites,
+          testrailProjectSections: sections,
+        }),
+      );
     },
   );
+  return Promise.all(projectPromises);
+};
 
-  await Promise.all(projectPromises);
+const createSuitesAndSections = async data => {
+  const { projectsTestCases, suiteNameObjects } = data;
+  const promises = flatMap(projectsTestCases, (projectTestCases, project) => {
+    const missingSuiteNames = uniq(
+      filter(
+        flatMap(projectTestCases, 'suiteName'),
+        suiteName => !has(suiteNameObjects, suiteName),
+      ),
+    );
+    return map(missingSuiteNames, suiteName =>
+      createSuiteAndSection({
+        id: getProjectId(project),
+        name: suiteName,
+      }),
+    );
+  });
+  return Promise.all(promises);
 };
 
 const deleteSuitesInProject = async projects => {
@@ -107,23 +111,30 @@ const parseHandler = async describes => {
   });
   const sections = await getAllTestrailSections(suites);
 
-  const projectsTestCases = getTestCases({
+  const projectsTestCases = getProjectsTestCases({
     projects,
     testCases: parsedTestCases,
   });
-  const projectsTestrailTestCases = getPreparedTestrailTestCases({
+
+  const projectsTestrailTestCases = getProjectsTestCases({
     projects,
     testCases: testrailTestCases,
     isTestrail: true,
+  });
+
+  let suitesSections = await createSuitesAndSections({
+    projectsTestCases,
     suiteNameObjects,
   });
+  suitesSections = flatten(suitesSections);
+  const allSuites = concat(map(suitesSections, 'suite'), suites);
+  const allSections = concat(map(suitesSections, 'section'), sections);
 
   await updateTestCases({
     projectsTestCases,
     projectsTestrailTestCases,
-    suiteNameObjects,
-    suites,
-    sections,
+    suites: allSuites,
+    sections: allSections,
   });
 
   process.exit();
