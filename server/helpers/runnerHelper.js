@@ -103,18 +103,18 @@ const getPreparedParsedTestCases = data => {
   });
 };
 
-const getTestrailTestCases = async data => {
-  const { suiteIdObjects } = data;
-  const testrailTestCasePromises = map(suiteIdObjects, (suiteIdObject, id) =>
-    getCases({ id, project_id: suiteIdObject.projectId }),
+const getTestrailTestCases = async suites => {
+  const testrailTestCasePromises = map(suites, (suites, id) =>
+    getCases({ suite_id: id, project_id: suites.project_id }),
   );
 
   const testrailTestSuiteCases = await Promise.all(testrailTestCasePromises);
   return map(flatMap(testrailTestSuiteCases, 'cases'), testCase => {
+    const foundSuite = find(suites, { id: testCase.suite_id });
     return {
       ...testCase,
-      ...suiteIdObjects[testCase.suite_id],
-      toDelete: true,
+      suiteName: foundSuite.name,
+      projectId: foundSuite.project_id,
     };
   });
 };

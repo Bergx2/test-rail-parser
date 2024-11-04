@@ -14,7 +14,7 @@ const createCase = testCase =>
 
 const getCases = data =>
   getResources({
-    resourceData: { suite_id: data.id },
+    resourceData: pick(data, ['suite_id']),
     id: data.project_id,
     endpoint: 'get_cases',
   });

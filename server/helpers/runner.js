@@ -6,6 +6,7 @@ const get = require('lodash/get');
 const flatten = require('lodash/flatten');
 const uniq = require('lodash/uniq');
 const has = require('lodash/has');
+const find = require('lodash/find');
 const filter = require('lodash/filter');
 const includes = require('lodash/includes');
 
@@ -96,12 +97,12 @@ const updateTestCases = async data => {
 };
 
 const createSuitesAndSections = async data => {
-  const { projectsTestCases, suiteNameObjects } = data;
+  const { projectsTestCases, suites } = data;
   const promises = flatMap(projectsTestCases, (projectTestCases, project) => {
     const missingSuiteNames = uniq(
       filter(
         flatMap(projectTestCases, 'suiteName'),
-        suiteName => !has(suiteNameObjects, suiteName),
+        suiteName => !find(suites, { name: suiteName }),
       ),
     );
     return map(missingSuiteNames, suiteName =>
@@ -121,17 +122,11 @@ const deleteSuitesInProject = async projects => {
 
 const parseHandler = async describes => {
   const projects = keys(getProjects());
-  // await deleteSuitesInProject(projects);
+  await deleteSuitesInProject(projects);
 
   const parsedTestCases = getParsedTestCases(describes);
-
-  const { suites, suiteIdObjects, suiteNameObjects } = await getSuiteObjects(
-    projects,
-  );
-  const testrailTestCases = await getTestrailTestCases({
-    projects,
-    suiteIdObjects,
-  });
+  const suites = await getAllTestrailSuites(projects);
+  const testrailTestCases = await getTestrailTestCases(suites);
   const sections = await getAllTestrailSections(suites);
 
   const projectsTestCases = getProjectsTestCases({
@@ -147,7 +142,7 @@ const parseHandler = async describes => {
 
   const suitesSections = await createSuitesAndSections({
     projectsTestCases,
-    suiteNameObjects,
+    suites,
   });
 
   await updateTestCases({
