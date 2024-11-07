@@ -9,7 +9,7 @@ const { getProjectName } = require('./testrailHelper');
 const { getParsedTest } = require('./parserHelper');
 const { getSuiteName } = require('./suiteHelper');
 const { getCases } = require('./testCaseHelper');
-const { formateObjectsByKey } = require('./baseHelper');
+const { formateObjectsByKey, isTrue } = require('./baseHelper');
 
 const getProjectTestCases = data => {
   const { testCases, project } = data;
@@ -18,7 +18,7 @@ const getProjectTestCases = data => {
     (sum, testCase) => {
       if (
         project === getProjectName(testCase.suiteName) ||
-        testCase.custom_is_common
+        isTrue(testCase.custom_is_common)
       ) {
         sum.push({
           ...testCase,

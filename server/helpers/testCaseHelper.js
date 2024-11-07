@@ -3,7 +3,11 @@ const filter = require('lodash/filter');
 const map = require('lodash/map');
 const compact = require('lodash/compact');
 const pick = require('lodash/pick');
-const { addResource, getProjectName } = require('./testrailHelper');
+const {
+  addResource,
+  getProjectName,
+  deleteResource,
+} = require('./testrailHelper');
 const logger = require('../utils/logger');
 const { getResources } = require('./testrailHelper');
 
@@ -38,8 +42,16 @@ const createProjectCases = async createRepoProjectCases => {
   return cases;
 };
 
+const deleteCases = cases => {
+  const deleteCasePromises = map(cases, testCase =>
+    deleteResource({ id: testCase.id, endpoint: 'delete_case' }),
+  );
+  return Promise.all(deleteCasePromises);
+};
+
 module.exports = {
   createCase,
   createProjectCases,
   getCases,
+  deleteCases,
 };

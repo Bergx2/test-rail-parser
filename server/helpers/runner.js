@@ -2,7 +2,6 @@ const keys = require('lodash/keys');
 const map = require('lodash/map');
 const reduce = require('lodash/reduce');
 const get = require('lodash/get');
-const identity = require('lodash/identity');
 const uniq = require('lodash/uniq');
 const intersection = require('lodash/intersection');
 const difference = require('lodash/difference');
@@ -15,11 +14,12 @@ const logger = require('../utils/logger');
 const {
   getTestrailTestCases,
   getProjectsSuitesTestCases,
+  getParsedTestCases,
 } = require('./runnerHelper');
 const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
 const { createSuiteAndSection } = require('./commonHelper');
 const { getProjects, addResource, getProjectId } = require('./testrailHelper');
-const { createProjectCases } = require('./testCaseHelper');
+const { createProjectCases, deleteCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
 const { formateObjectsByKey } = require('./baseHelper');
 
@@ -39,6 +39,28 @@ const updateTestCases = async data => {
       const customIds = keys(projectTestCases);
       const updateCustomIds = intersection(customIds, testrailCustomIds);
       const createCustomIds = difference(customIds, testrailCustomIds);
+
+      const existingSuiteNames = map(
+        [...createCustomIds, ...updateCustomIds],
+        customId => projectTestCases[customId].suiteName,
+      );
+      const projectSuiteNames = keys(suites[project]);
+      const deleteSuiteNames = difference(
+        projectSuiteNames,
+        existingSuiteNames,
+      );
+      const deleteCustomIds = difference(testrailCustomIds, updateCustomIds);
+
+      const deleteTestCases = map(
+        deleteCustomIds,
+        deleteCustomId => projectsTestrailTestCases[project][deleteCustomId],
+      );
+      const deleteTestrailSuites = filter(suites[project], projectSuite =>
+        includes(deleteSuiteNames, projectSuite.name),
+      );
+
+      await deleteCases(deleteTestCases);
+      await deleteSuites(deleteTestrailSuites);
 
       const updatePromises = map(updateCustomIds, updateCustomId => {
         return addResource({
@@ -104,15 +126,13 @@ const deleteSuitesInProject = async projects => {
 
 const parseHandler = async describes => {
   const projects = keys(getProjects());
-  await deleteSuitesInProject(projects);
+  // await deleteSuitesInProject(projects);
 
-  // const parsedTestCases = getParsedTestCases(describes);
-  const parsedTestCases = describes;
+  const parsedTestCases = getParsedTestCases(describes);
 
   const testrailSuites = await getAllTestrailSuites(projects);
   const testrailSections = await getAllTestrailSections(testrailSuites);
   const projectsTestrailTestCases = await getTestrailTestCases(testrailSuites);
-
   const { projectsSuites, projectsTestCases } = getProjectsSuitesTestCases({
     projects,
     testCases: parsedTestCases,
@@ -194,5 +214,4 @@ const runner = async params => {
 
 module.exports = {
   runner,
-  parseHandler,
 };
