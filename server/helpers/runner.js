@@ -1,32 +1,27 @@
 const keys = require('lodash/keys');
-const flatMap = require('lodash/flatMap');
 const map = require('lodash/map');
-const concat = require('lodash/concat');
+const reduce = require('lodash/reduce');
 const get = require('lodash/get');
-const flatten = require('lodash/flatten');
+const identity = require('lodash/identity');
 const uniq = require('lodash/uniq');
-const has = require('lodash/has');
-const find = require('lodash/find');
+const intersection = require('lodash/intersection');
+const difference = require('lodash/difference');
 const filter = require('lodash/filter');
 const includes = require('lodash/includes');
-
+const set = require('lodash/set');
+const assign = require('lodash/assign');
 const logger = require('../utils/logger');
 
 const {
-  getParsedTestCases,
-  getPreparedParsedTestCases,
   getTestrailTestCases,
-  getProjectsTestCases,
+  getProjectsSuitesTestCases,
 } = require('./runnerHelper');
-const {
-  getAllTestrailSuites,
-  deleteSuites,
-  getSuiteObjects,
-} = require('./suiteHelper');
+const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
 const { createSuiteAndSection } = require('./commonHelper');
 const { getProjects, addResource, getProjectId } = require('./testrailHelper');
 const { createProjectCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
+const { formateObjectsByKey } = require('./baseHelper');
 
 const allDescribes = [];
 
@@ -42,13 +37,9 @@ const updateTestCases = async data => {
     async (projectTestCases, project) => {
       const testrailCustomIds = keys(projectsTestrailTestCases[project]);
       const customIds = keys(projectTestCases);
-      const updateCustomIds = filter(customIds, customId =>
-        includes(testrailCustomIds, customId),
-      );
-      const createCustomIds = filter(
-        customIds,
-        customId => !includes(testrailCustomIds, customId),
-      );
+      const updateCustomIds = intersection(customIds, testrailCustomIds);
+      const createCustomIds = difference(customIds, testrailCustomIds);
+
       const updatePromises = map(updateCustomIds, updateCustomId => {
         return addResource({
           resourceData: get(projectTestCases, [updateCustomId]), // eslint-disable-line lodash/path-style
@@ -59,13 +50,13 @@ const updateTestCases = async data => {
 
       await Promise.all(updatePromises);
       return createProjectCases(
-        getPreparedParsedTestCases({
-          testCases: map(
-            createCustomIds,
-            createCustomId => get(projectTestCases, [createCustomId]), // eslint-disable-line lodash/path-style
-          ),
-          testrailProjectSuites: suites,
-          testrailProjectSections: sections,
+        map(createCustomIds, createCustomId => {
+          const { suiteName } = projectTestCases[createCustomId];
+          return {
+            ...projectTestCases[createCustomId],
+            suite_id: suites[project][suiteName].id,
+            section_id: sections[project][suiteName].id,
+          };
         }),
       );
     },
@@ -74,62 +65,70 @@ const updateTestCases = async data => {
 };
 
 const createSuitesAndSections = async data => {
-  const { projectsTestCases, suites } = data;
-  const promises = flatMap(projectsTestCases, (projectTestCases, project) => {
-    const missingSuiteNames = uniq(
-      filter(
-        flatMap(projectTestCases, 'suiteName'),
-        suiteName => !find(suites, { name: suiteName }),
-      ),
-    );
-    return map(missingSuiteNames, suiteName =>
-      createSuiteAndSection({
-        id: getProjectId(project),
-        name: suiteName,
-      }),
-    );
-  });
-  return Promise.all(promises);
+  const { projectsSuites, testrailSuites, testrailSections } = data;
+  return reduce(
+    projectsSuites,
+    async (accPromise, suites, project) => {
+      const acc = await accPromise;
+      const missingSuiteNames = uniq(
+        difference(keys(suites), keys(testrailSuites[project])),
+      );
+      const createdSuitesSectionsPromises = map(missingSuiteNames, suiteName =>
+        createSuiteAndSection({
+          id: getProjectId(project),
+          name: suiteName,
+        }),
+      );
+      const suitesSections = await Promise.all(createdSuitesSectionsPromises);
+      set(acc, `suites.${project}`, {
+        ...formateObjectsByKey(map(suitesSections, 'suite'), 'name'),
+        ...testrailSuites[project],
+      });
+      set(acc, `sections.${project}`, {
+        ...formateObjectsByKey(map(suitesSections, 'section'), 'name'),
+        ...testrailSections[project],
+      });
+
+      return acc;
+    },
+    Promise.resolve({ suites: {}, sections: {} }),
+  );
 };
 
 const deleteSuitesInProject = async projects => {
   const suites = await getAllTestrailSuites(projects);
-  return deleteSuites(flatMap(suites));
+  return deleteSuites(
+    reduce(suites, (acc, projectSuites) => assign(acc, projectSuites), {}),
+  );
 };
 
 const parseHandler = async describes => {
   const projects = keys(getProjects());
   await deleteSuitesInProject(projects);
 
-  const parsedTestCases = getParsedTestCases(describes);
-  const suites = await getAllTestrailSuites(projects);
-  const testrailTestCases = await getTestrailTestCases(suites);
-  const sections = await getAllTestrailSections(suites);
+  // const parsedTestCases = getParsedTestCases(describes);
+  const parsedTestCases = describes;
 
-  const projectsTestCases = getProjectsTestCases({
+  const testrailSuites = await getAllTestrailSuites(projects);
+  const testrailSections = await getAllTestrailSections(testrailSuites);
+  const projectsTestrailTestCases = await getTestrailTestCases(testrailSuites);
+
+  const { projectsSuites, projectsTestCases } = getProjectsSuitesTestCases({
     projects,
     testCases: parsedTestCases,
   });
 
-  const projectsTestrailTestCases = getProjectsTestCases({
-    projects,
-    testCases: testrailTestCases,
-    isTestrail: true,
+  const { suites, sections } = await createSuitesAndSections({
+    projectsSuites,
+    testrailSuites,
+    testrailSections,
   });
-
-  let suitesSections = await createSuitesAndSections({
-    projectsTestCases,
-    suites,
-  });
-  suitesSections = flatten(suitesSections);
-  const allSuites = concat(map(suitesSections, 'suite'), suites);
-  const allSections = concat(map(suitesSections, 'section'), sections);
 
   await updateTestCases({
     projectsTestCases,
     projectsTestrailTestCases,
-    suites: allSuites,
-    sections: allSections,
+    suites,
+    sections,
   });
 
   process.exit();

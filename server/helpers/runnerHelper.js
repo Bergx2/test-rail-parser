@@ -1,17 +1,15 @@
 const map = require('lodash/map');
 const set = require('lodash/set');
 const reduce = require('lodash/reduce');
-const keyBy = require('lodash/keyBy');
-const find = require('lodash/find');
-const filter = require('lodash/filter');
-const flatMap = require('lodash/flatMap');
+const concat = require('lodash/concat');
 const compact = require('lodash/compact');
 const replace = require('lodash/replace');
 
-const { getProjectName, getProjectId } = require('./testrailHelper');
+const { getProjectName } = require('./testrailHelper');
 const { getParsedTest } = require('./parserHelper');
 const { getSuiteName } = require('./suiteHelper');
 const { getCases } = require('./testCaseHelper');
+const { formateObjectsByKey } = require('./baseHelper');
 
 const getProjectTestCases = data => {
   const { testCases, project } = data;
@@ -37,28 +35,34 @@ const getProjectTestCases = data => {
   );
 };
 
-const getProjectsTestCases = data => {
-  const { projects, testCases, isTestrail } = data;
+const getProjectsSuitesTestCases = data => {
+  const { projects, testCases } = data;
   return reduce(
     projects,
     (acc, project) => {
-      let projectTestCases = filter(testCases, {
-        projectId: getProjectId(project),
+      const projectTestCases = getProjectTestCases({
+        testCases: map(testCases, parsedTestCase => ({
+          ...parsedTestCase,
+          custom_id: `${project}:${parsedTestCase.title}`,
+        })),
+        project,
       });
-      if (!isTestrail) {
-        projectTestCases = getProjectTestCases({
-          testCases: map(testCases, parsedTestCase => ({
-            ...parsedTestCase,
-            custom_id: `${project}:${Buffer.from(parsedTestCase.title).toString(
-              'base64',
-            )}`,
-          })),
-          project,
-        });
-      }
-      return set(acc, project, keyBy(projectTestCases, 'custom_id'));
+
+      // Set the suites and testCases in the accumulated object
+      set(
+        acc,
+        `projectsSuites.${project}`,
+        formateObjectsByKey(projectTestCases, 'suiteName'),
+      );
+      set(
+        acc,
+        `projectsTestCases.${project}`,
+        formateObjectsByKey(projectTestCases, 'custom_id'),
+      );
+
+      return acc;
     },
-    {},
+    { projectSuites: {}, projectTestCases: {} },
   );
 };
 
@@ -84,44 +88,39 @@ const getParsedTestCases = describes => {
   );
 };
 
-const getPreparedParsedTestCases = data => {
-  const { testrailProjectSuites, testrailProjectSections, testCases } = data;
-  return map(testCases, testCase => {
-    const foundSuite = find(testrailProjectSuites, {
-      name: testCase.suiteName,
-    });
+const getTestrailTestCases = async suites =>
+  reduce(
+    suites,
+    async (projectSuiteAccPromise, projectSuites, project) => {
+      const projectSuiteAcc = await projectSuiteAccPromise;
+      const testCases = await reduce(
+        projectSuites,
+        async (accPromise, suite) => {
+          const acc = await accPromise;
+          const suiteCases = await getCases({
+            suite_id: suite.id,
+            project_id: suite.project_id,
+          });
+          const mappedCases = map(suiteCases.cases, testCase => ({
+            ...testCase,
+            suiteName: suite.name,
+            projectId: suite.project_id,
+          }));
+          return concat(acc, mappedCases);
+        },
+        Promise.resolve([]),
+      );
 
-    const foundSection = find(testrailProjectSections, {
-      suite_id: foundSuite.id,
-    });
-
-    return {
-      ...testCase,
-      suite_id: foundSuite.id,
-      section_id: foundSection.id,
-    };
-  });
-};
-
-const getTestrailTestCases = async suites => {
-  const testrailTestCasePromises = map(suites, (suites, id) =>
-    getCases({ suite_id: id, project_id: suites.project_id }),
+      return {
+        ...projectSuiteAcc,
+        [project]: formateObjectsByKey(testCases, 'custom_id'),
+      };
+    },
+    Promise.resolve({}),
   );
 
-  const testrailTestSuiteCases = await Promise.all(testrailTestCasePromises);
-  return map(flatMap(testrailTestSuiteCases, 'cases'), testCase => {
-    const foundSuite = find(suites, { id: testCase.suite_id });
-    return {
-      ...testCase,
-      suiteName: foundSuite.name,
-      projectId: foundSuite.project_id,
-    };
-  });
-};
-
 module.exports = {
-  getPreparedParsedTestCases,
-  getProjectsTestCases,
+  getProjectsSuitesTestCases,
   getParsedTestCases,
   getTestrailTestCases,
 };

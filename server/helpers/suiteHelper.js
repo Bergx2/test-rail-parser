@@ -11,6 +11,7 @@ const {
   getResources,
 } = require('./testrailHelper');
 const logger = require('../utils/logger');
+const { formateObjectsByKey } = require('./baseHelper');
 
 const deleteSuites = suites => {
   const deleteSuitePromises = map(suites, suite =>
@@ -37,16 +38,23 @@ const createSuite = async data => {
   return suite;
 };
 
-const getAllTestrailSuites = async projects => {
-  const projectIds = map(projects, getProjectId);
-  const resourcePromises = map(projectIds, id =>
-    getResources({ id, endpoint: 'get_suites' }),
+const getAllTestrailSuites = async projects =>
+  reduce(
+    projects,
+    async (accPromise, project) => {
+      const acc = await accPromise;
+      const projectSuites = await getResources({
+        id: getProjectId(project),
+        endpoint: 'get_suites',
+      });
+      return assign(
+        acc,
+        { [project]: formateObjectsByKey(projectSuites, 'name') },
+        {},
+      );
+    },
+    Promise.resolve({}),
   );
-
-  const suites = await Promise.all(resourcePromises);
-
-  return flatten(suites);
-};
 
 module.exports = {
   deleteSuites,
