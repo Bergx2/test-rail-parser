@@ -1,19 +1,19 @@
 const get = require('lodash/get');
 const map = require('lodash/map');
-const filter = require('lodash/filter');
 const pick = require('lodash/pick');
 const reduce = require('lodash/reduce');
 const flatten = require('lodash/flatten');
+const assign = require('lodash/assign');
 const {
   deleteResource,
   getProjectId,
   addResource,
-  getProjectName,
   getResources,
 } = require('./testrailHelper');
 const logger = require('../utils/logger');
+const { formateObjectsByKey } = require('./baseHelper');
 
-const deleteAllSuites = suites => {
+const deleteSuites = suites => {
   const deleteSuitePromises = map(suites, suite =>
     deleteResource({ id: suite.id, endpoint: 'delete_suite' }),
   );
@@ -38,19 +38,26 @@ const createSuite = async data => {
   return suite;
 };
 
-const getAllTestrailSuites = async projects => {
-  const projectIds = map(projects, getProjectId);
-  const resourcePromises = map(projectIds, id =>
-    getResources({ id, endpoint: 'get_suites' }),
+const getAllTestrailSuites = async projects =>
+  reduce(
+    projects,
+    async (accPromise, project) => {
+      const acc = await accPromise;
+      const projectSuites = await getResources({
+        id: getProjectId(project),
+        endpoint: 'get_suites',
+      });
+      return assign(
+        acc,
+        { [project]: formateObjectsByKey(projectSuites, 'name') },
+        {},
+      );
+    },
+    Promise.resolve({}),
   );
 
-  const suites = await Promise.all(resourcePromises);
-
-  return flatten(suites);
-};
-
 module.exports = {
-  deleteAllSuites,
+  deleteSuites,
   getSuiteName,
   createSuite,
   getAllTestrailSuites,

@@ -1,68 +1,134 @@
 const keys = require('lodash/keys');
-const flatMap = require('lodash/flatMap');
 const map = require('lodash/map');
+const reduce = require('lodash/reduce');
+const get = require('lodash/get');
+const identity = require('lodash/identity');
 const uniq = require('lodash/uniq');
-const flatten = require('lodash/flatten');
-
+const intersection = require('lodash/intersection');
+const difference = require('lodash/difference');
+const filter = require('lodash/filter');
+const includes = require('lodash/includes');
+const set = require('lodash/set');
+const assign = require('lodash/assign');
 const logger = require('../utils/logger');
 
 const {
-  getParsedTestCases,
-  getPreparedParsedTestCases,
-  getTestCases,
+  getTestrailTestCases,
+  getProjectsSuitesTestCases,
 } = require('./runnerHelper');
-const { deleteAllSuites, getAllTestrailSuites } = require('./suiteHelper');
-const { createSuitesSections } = require('./commonHelper');
-const { getProjects } = require('./testrailHelper');
+const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
+const { createSuiteAndSection } = require('./commonHelper');
+const { getProjects, addResource, getProjectId } = require('./testrailHelper');
 const { createProjectCases } = require('./testCaseHelper');
+const { getAllTestrailSections } = require('./sectionHelper');
+const { formateObjectsByKey } = require('./baseHelper');
 
 const allDescribes = [];
 
 const updateTestCases = async data => {
-  const { projects, testCases } = data;
-  const createSuiteSectionPromises = map(projects, project =>
-    createSuitesSections({
-      suiteNames: uniq(map(testCases[project], 'suiteName')),
-      projectName: project,
-    }),
+  const {
+    projectsTestCases,
+    projectsTestrailTestCases,
+    suites,
+    sections,
+  } = data;
+  const projectPromises = map(
+    projectsTestCases,
+    async (projectTestCases, project) => {
+      const testrailCustomIds = keys(projectsTestrailTestCases[project]);
+      const customIds = keys(projectTestCases);
+      const updateCustomIds = intersection(customIds, testrailCustomIds);
+      const createCustomIds = difference(customIds, testrailCustomIds);
+
+      const updatePromises = map(updateCustomIds, updateCustomId => {
+        return addResource({
+          resourceData: get(projectTestCases, [updateCustomId]), // eslint-disable-line lodash/path-style
+          endpoint: 'update_case',
+          id: get(projectsTestrailTestCases, [project, updateCustomId, 'id']), // eslint-disable-line lodash/path-style
+        });
+      });
+
+      await Promise.all(updatePromises);
+      return createProjectCases(
+        map(createCustomIds, createCustomId => {
+          const { suiteName } = projectTestCases[createCustomId];
+          return {
+            ...projectTestCases[createCustomId],
+            suite_id: suites[project][suiteName].id,
+            section_id: sections[project][suiteName].id,
+          };
+        }),
+      );
+    },
   );
+  return Promise.all(projectPromises);
+};
 
-  let suitesSections = await Promise.all(createSuiteSectionPromises);
-  suitesSections = flatten(suitesSections);
+const createSuitesAndSections = async data => {
+  const { projectsSuites, testrailSuites, testrailSections } = data;
+  return reduce(
+    projectsSuites,
+    async (accPromise, suites, project) => {
+      const acc = await accPromise;
+      const missingSuiteNames = uniq(
+        difference(keys(suites), keys(testrailSuites[project])),
+      );
+      const createdSuitesSectionsPromises = map(missingSuiteNames, suiteName =>
+        createSuiteAndSection({
+          id: getProjectId(project),
+          name: suiteName,
+        }),
+      );
+      const suitesSections = await Promise.all(createdSuitesSectionsPromises);
+      set(acc, `suites.${project}`, {
+        ...formateObjectsByKey(map(suitesSections, 'suite'), 'name'),
+        ...testrailSuites[project],
+      });
+      set(acc, `sections.${project}`, {
+        ...formateObjectsByKey(map(suitesSections, 'section'), 'name'),
+        ...testrailSections[project],
+      });
 
-  const suites = map(suitesSections, 'suite');
-  const sections = map(suitesSections, 'section');
-
-  const createProjectCasePromises = map(projects, project => {
-    const preparedParsedTestCases = getPreparedParsedTestCases({
-      testCases: testCases[project],
-      testrailProjectSuites: suites,
-      testrailProjectSections: sections,
-      projectName: project,
-    });
-
-    return createProjectCases(preparedParsedTestCases);
-  });
-
-  return Promise.all(createProjectCasePromises);
+      return acc;
+    },
+    Promise.resolve({ suites: {}, sections: {} }),
+  );
 };
 
 const deleteSuitesInProject = async projects => {
   const suites = await getAllTestrailSuites(projects);
-  return deleteAllSuites(suites);
+  return deleteSuites(
+    reduce(suites, (acc, projectSuites) => assign(acc, projectSuites), {}),
+  );
 };
 
 const parseHandler = async describes => {
   const projects = keys(getProjects());
-
   await deleteSuitesInProject(projects);
 
-  const parsedTestCases = getParsedTestCases(describes);
-  const testCases = getTestCases({ projects, parsedTestCases });
+  // const parsedTestCases = getParsedTestCases(describes);
+  const parsedTestCases = describes;
+
+  const testrailSuites = await getAllTestrailSuites(projects);
+  const testrailSections = await getAllTestrailSections(testrailSuites);
+  const projectsTestrailTestCases = await getTestrailTestCases(testrailSuites);
+
+  const { projectsSuites, projectsTestCases } = getProjectsSuitesTestCases({
+    projects,
+    testCases: parsedTestCases,
+  });
+
+  const { suites, sections } = await createSuitesAndSections({
+    projectsSuites,
+    testrailSuites,
+    testrailSections,
+  });
 
   await updateTestCases({
-    testCases,
-    projects,
+    projectsTestCases,
+    projectsTestrailTestCases,
+    suites,
+    sections,
   });
 
   process.exit();
@@ -117,6 +183,7 @@ const runner = async params => {
         await parseHandler(allDescribes);
       } catch (error) {
         logger.log('error', error);
+        process.exit();
       }
       logger.log(
         'info',
@@ -127,4 +194,5 @@ const runner = async params => {
 
 module.exports = {
   runner,
+  parseHandler,
 };
