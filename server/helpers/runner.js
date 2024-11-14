@@ -9,21 +9,30 @@ const filter = require('lodash/filter');
 const includes = require('lodash/includes');
 const set = require('lodash/set');
 const assign = require('lodash/assign');
+const concat = require('lodash/concat');
 const logger = require('../utils/logger');
 
 const {
   getTestrailTestCases,
   getProjectsSuitesTestCases,
   getParsedTestCases,
+  getRawTestCasesWithStatus,
 } = require('./runnerHelper');
 const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
 const { createSuiteAndSection } = require('./commonHelper');
-const { getProjects, addResource, getProjectId } = require('./testrailHelper');
+const {
+  getProjects,
+  addResource,
+  getProjectId,
+  getProjectName,
+} = require('./testrailHelper');
 const { createProjectCases, deleteCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
 const { formateObjectsByKey } = require('./baseHelper');
+const { STATUSES } = require('./runHelper');
 
 const allDescribes = [];
+const allTests = {};
 
 const updateTestCases = async data => {
   const {
@@ -70,8 +79,8 @@ const updateTestCases = async data => {
         });
       });
 
-      await Promise.all(updatePromises);
-      return createProjectCases(
+      const updatedTestCases = await Promise.all(updatePromises);
+      const createdTestCases = await createProjectCases(
         map(createCustomIds, createCustomId => {
           const { suiteName } = projectTestCases[createCustomId];
           return {
@@ -81,9 +90,11 @@ const updateTestCases = async data => {
           };
         }),
       );
+      return [...createdTestCases, ...updatedTestCases];
     },
   );
-  return Promise.all(projectPromises);
+  const testCases = await Promise.all(projectPromises);
+  return reduce(testCases, (acc, item) => concat(acc, item), []);
 };
 
 const createSuitesAndSections = async data => {
@@ -185,12 +196,15 @@ const runner = async params => {
       indents--;
     })
     .on(EVENT_TEST_PASS, test => {
+      set(allTests, [test.parent.title, test.title], STATUSES.passed); // eslint-disable-line lodash/path-style
+
       logger.log(
         'info',
         `${Array(indents).join('  ')}pass parse here: ${test.fullTitle()}`,
       );
     })
     .on(EVENT_TEST_FAIL, (test, err) => {
+      set(allTests, [test.parent.title, test.title], STATUSES.failed); // eslint-disable-line lodash/path-style
       logger.log(
         'error',
         `${Array(indents).join(
@@ -200,7 +214,12 @@ const runner = async params => {
     })
     .once(EVENT_RUN_END, async () => {
       try {
-        await parseHandler(allDescribes);
+        await parseHandler(
+          getRawTestCasesWithStatus({
+            describes: allDescribes,
+            tests: allTests,
+          }),
+        );
       } catch (error) {
         logger.log('error', error);
         process.exit();
