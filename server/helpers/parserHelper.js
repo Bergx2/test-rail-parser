@@ -32,7 +32,7 @@ const getDefaultResult = data => ({
   custom_steps_separated: [],
   template_id: 2,
   custom_id: null,
-  title: data.title,
+  ...data,
 });
 
 const parseTestCase = commentBlock => {
@@ -55,7 +55,7 @@ const parseTestCase = commentBlock => {
   return result;
 };
 
-const prepareParseTestCase = (parsedTestCase, title) =>
+const prepareParseTestCase = (parsedTestCase, defaultData) =>
   reduce(
     parsedTestCase,
     (acc, { key, value }) => {
@@ -75,7 +75,7 @@ const prepareParseTestCase = (parsedTestCase, title) =>
 
       return acc;
     },
-    { ...getDefaultResult({ title }) },
+    { ...getDefaultResult(defaultData) },
   );
 
 // remove leading asterisks and any whitespace after them
@@ -86,7 +86,7 @@ const removeEmptyLines = testCaseBlock => {
 };
 
 const getParsedTest = data => {
-  const { content, testName } = data;
+  const { content, testName, custom_status } = data;
   let testCaseBlock = new RegExp('@test_case([\\s\\S]*?)\\*/', 'gs').exec(
     content,
   );
@@ -99,7 +99,10 @@ const getParsedTest = data => {
   testCaseBlock = removeEmptyLines(testCaseBlock[1]);
 
   const parsedTestCase = parseTestCase(testCaseBlock);
-  return prepareParseTestCase(parsedTestCase, testName);
+  return prepareParseTestCase(parsedTestCase, {
+    title: testName,
+    custom_status,
+  });
 };
 
 module.exports = {

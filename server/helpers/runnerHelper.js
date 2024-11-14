@@ -10,6 +10,7 @@ const { getParsedTest } = require('./parserHelper');
 const { getSuiteName } = require('./suiteHelper');
 const { getCases } = require('./testCaseHelper');
 const { formateObjectsByKey, isTrue } = require('./baseHelper');
+const { STATUSES } = require('./runHelper');
 
 const getProjectTestCases = data => {
   const { testCases, project } = data;
@@ -66,6 +67,25 @@ const getProjectsSuitesTestCases = data => {
   );
 };
 
+const getRawTestCasesWithStatus = data =>
+  reduce(
+    data.describes,
+    (acc, describe) =>
+      concat(acc, {
+        ...describe,
+        tests: reduce(
+          describe.tests,
+          (accTests, test) =>
+            concat(accTests, {
+              ...test,
+              status: data.tests[getSuiteName(describe)][test.title],
+            }),
+          [],
+        ),
+      }),
+    [],
+  );
+
 const getParsedTestCases = describes => {
   return compact(
     reduce(
@@ -73,14 +93,16 @@ const getParsedTestCases = describes => {
       (acc, describe) =>
         acc.concat(
           map(describe.tests, it => {
+            const suiteName = getSuiteName(describe);
             const parsedTest = getParsedTest({
               content: it.body,
               testName: it.title,
+              custom_status: it.status || STATUSES.untested,
             });
             if (!parsedTest) {
               return null;
             }
-            return { ...parsedTest, suiteName: getSuiteName(describe) };
+            return { ...parsedTest, suiteName };
           }),
         ),
       [],
@@ -123,4 +145,5 @@ module.exports = {
   getProjectsSuitesTestCases,
   getParsedTestCases,
   getTestrailTestCases,
+  getRawTestCasesWithStatus,
 };
