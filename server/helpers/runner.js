@@ -10,6 +10,7 @@ const includes = require('lodash/includes');
 const set = require('lodash/set');
 const assign = require('lodash/assign');
 const concat = require('lodash/concat');
+const orderBy = require('lodash/orderBy');
 const logger = require('../utils/logger');
 
 const {
@@ -20,12 +21,7 @@ const {
 } = require('./runnerHelper');
 const { getAllTestrailSuites, deleteSuites } = require('./suiteHelper');
 const { createSuiteAndSection } = require('./commonHelper');
-const {
-  getProjects,
-  addResource,
-  getProjectId,
-  getProjectName,
-} = require('./testrailHelper');
+const { getProjects, addResource, getProjectId } = require('./testrailHelper');
 const { createProjectCases, deleteCases } = require('./testCaseHelper');
 const { getAllTestrailSections } = require('./sectionHelper');
 const { formateObjectsByKey } = require('./baseHelper');
@@ -79,8 +75,7 @@ const updateTestCases = async data => {
         });
       });
 
-      const updatedTestCases = await Promise.all(updatePromises);
-      const createdTestCases = await createProjectCases(
+      const createCases = orderBy(
         map(createCustomIds, createCustomId => {
           const { suiteName } = projectTestCases[createCustomId];
           return {
@@ -89,7 +84,11 @@ const updateTestCases = async data => {
             section_id: sections[project][suiteName].id,
           };
         }),
+        'priority_id',
+        'desc',
       );
+      const updatedTestCases = await Promise.all(updatePromises);
+      const createdTestCases = await createProjectCases(createCases);
       return [...createdTestCases, ...updatedTestCases];
     },
   );
@@ -137,7 +136,9 @@ const deleteSuitesInProject = async projects => {
 
 const parseHandler = async describes => {
   const projects = keys(getProjects());
-  // await deleteSuitesInProject(projects);
+  if (process.env.WITH_DELETE) {
+    await deleteSuitesInProject(projects);
+  }
 
   const parsedTestCases = getParsedTestCases(describes);
 

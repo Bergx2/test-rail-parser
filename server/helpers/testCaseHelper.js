@@ -1,13 +1,9 @@
-const get = require('lodash/get');
-const filter = require('lodash/filter');
+const reduce = require('lodash/reduce');
+const concat = require('lodash/concat');
 const map = require('lodash/map');
 const compact = require('lodash/compact');
 const pick = require('lodash/pick');
-const {
-  addResource,
-  getProjectName,
-  deleteResource,
-} = require('./testrailHelper');
+const { addResource, deleteResource } = require('./testrailHelper');
 const logger = require('../utils/logger');
 const { getResources } = require('./testrailHelper');
 
@@ -28,18 +24,24 @@ const getCases = data =>
 const createProjectCases = async createRepoProjectCases => {
   logger.log('info', `START ADD CASES`);
 
-  const promises = map(createRepoProjectCases, createRepoProjectCase =>
-    createCase(createRepoProjectCase),
+  const createdCases = await reduce(
+    createRepoProjectCases,
+    async (accPromise, createRepoProjectCase) => {
+      const acc = await accPromise;
+      const currentCase = await createCase(createRepoProjectCase);
+      return concat(acc, currentCase);
+    },
+    Promise.resolve([]),
   );
-  const cases = await Promise.all(promises);
+
   logger.log(
     'info',
-    `CREATED CASES: ${map(compact(cases), currentCase =>
+    `CREATED CASES: ${map(compact(createdCases), currentCase =>
       JSON.stringify(pick(currentCase, ['id', 'suite_id', 'title'])),
     )} `,
   );
   logger.log('info', '______________________________________________');
-  return cases;
+  return createdCases;
 };
 
 const deleteCases = cases => {
