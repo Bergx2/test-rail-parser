@@ -28,7 +28,9 @@ const addResource = async data => {
   } catch (error) {
     logger.log(
       'error',
-      `Error creating / updating resource(endpoint: ${endpoint}, id: ${id}): ${
+      `Error creating / updating resource(endpoint: ${endpoint}, id: ${id}, resourceData: ${JSON.stringify(
+        resourceData,
+      )}): ${
         error.response ? JSON.stringify(error.response.data) : error.message
       }`,
     );
